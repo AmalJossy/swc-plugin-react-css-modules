@@ -1,0 +1,12 @@
+.something {
+  display: block;
+}
+.something:hover {
+  display: block;
+}
+.something:active {
+  display: block;
+}
+.something .visible {
+  display: block;
+}

@@ -1,0 +1,44 @@
+[package]
+name = "swc-plugin-react-css-modules"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+lto = true
+
+[dependencies]
+# hashes
+md4 = { version = "0.10", default-features = false }
+md-5 = { version = "0.10", default-features = false }
+sha1 = { version = "0.10", default-features = false }
+sha2 = { version = "0.10", default-features = false }
+twox-hash = "1.6.3"
+
+base32ct = {version = "0.2.0", features = ["alloc"]}
+base64ct = {version = "1.6.0", features = ["alloc"]}
+base16ct = { version = "0.2.0", features = ["alloc"] }
+
+digest = "0.10.7"
+
+lazy_static = "1.4.0"
+regex = "1.10.3"
+
+pathdiff = "0.2.1"
+path-absolutize = { version = "3.1.1", features = ["use_unix_paths_on_wasm"] }
+
+serde = "1"
+serde_json = "1.0.113"
+serde-inline-default = "0.2.0"
+ts-rs = "7.1.1"
+swc_core = { version = "0.90.6", features = ["ecma_plugin_transform", "ecma_parser"] }
+lightningcss = { version = "1.0.0-alpha.53", features = ["visitor"] }
+
+[dev-dependencies]
+testing = "0.35.17"
+
+# .cargo/config defines few alias to build plugin.
+# cargo build-wasi generates wasm-wasi32 binary
+# cargo build-wasm32 generates wasm32-unknown-unknown binary.

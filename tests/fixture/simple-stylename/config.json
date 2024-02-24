@@ -1,0 +1,3 @@
+{
+  "generate_scoped_name": "[name]__[local]_[hash:base64:5]"
+}
