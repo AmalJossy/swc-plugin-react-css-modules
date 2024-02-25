@@ -1,74 +1,111 @@
-use std::{
-    collections::HashMap,
-    convert::Infallible, fs, path::PathBuf, rc::Rc,
-};
+use std::{collections::HashMap, fs, path::PathBuf};
 
 use lightningcss::{
-    selector::{Component, Selector},
-    stylesheet::{ParserOptions, StyleSheet},
-    visitor::{Visit, VisitTypes, Visitor},
+    css_modules::{Config, CssModuleExport, CssModuleReference, Pattern},
+    printer::PrinterOptions,
+    stylesheet::{ParserOptions, StyleSheet, ToCssResult},
+    targets::Targets,
 };
+use path_absolutize::Absolutize;
+use swc_core::plugin::errors::HANDLER;
 
-use crate::generic_names::Generator;
+use crate::generic_names::{Generator, Options};
 
-pub fn generate_style_name_map(name_gen: Rc<Generator>, virtual_path: &PathBuf, file_path: &PathBuf) -> HashMap<String, String> {
-    let contents = fs::read_to_string(virtual_path.clone()).unwrap();
-    let mut stylesheet = StyleSheet::parse(
-        &contents,
-        ParserOptions {
-            filename: file_path.clone().into_os_string().into_string().unwrap(),
-            ..ParserOptions::default()
-        },
-    )
-    .unwrap();
-
-    let mut class_name_acc = ClassNameAccumulator::new(file_path.clone(), name_gen);
-    stylesheet.visit(&mut class_name_acc).unwrap();
-
-    class_name_acc.style_name_map
+pub struct CssModuleParser {
+    /// the same pattern passed to genericNames
+    pattern: String,
+    /// root of project
+    context: PathBuf,
+    hash_prefix: String,
+    /// path to file that can actually be read
+    /// works with virtualized fs
+    fs_path: PathBuf,
+    /// absolute path in the non-virtualized environment
+    /// used to generate hash
+    full_path: PathBuf,
 }
 
-/// Accumulates class names from a stylesheet into a set.
-/// use generate_obj_props to generate the object properties from the set of class names.
-struct ClassNameAccumulator {
-    file_path: PathBuf,
-    style_name_map: HashMap<String, String>,
-    generator: Rc<Generator>,
-}
-
-impl ClassNameAccumulator {
-    fn new(file_path: PathBuf, generator: Rc<Generator>) -> Self {
-        ClassNameAccumulator {
-            file_path,
-            style_name_map: HashMap::new(),
-            generator
+impl CssModuleParser {
+    pub fn new(
+        pattern: String,
+        context: PathBuf,
+        hash_prefix: String,
+        fs_path: PathBuf,
+        full_path: PathBuf,
+    ) -> Self {
+        Self {
+            pattern,
+            context,
+            hash_prefix,
+            fs_path,
+            full_path,
         }
-    }
+    } 
 
-    fn insert_class_name(&mut self, class_name: String) {
-        self.style_name_map.insert(class_name.clone(), self.generator.generate(&class_name, self.file_path.clone()));
-    }
-}
-
-impl<'i> Visitor<'i> for ClassNameAccumulator {
-    type Error = Infallible;
-
-    fn visit_types(&self) -> VisitTypes {
-        VisitTypes::SELECTORS
-    }
-
-    fn visit_selector(&mut self, selector: &mut Selector<'i>) -> Result<(), Self::Error> {
-        for c in selector.iter_mut_raw_match_order() {
-            match c {
-                // .class-name
-                Component::Class(c) => {
-                    self.insert_class_name(c.to_string());
-                }
-                // do nothing for any other selector
-                _ => {}
+    pub fn generate_style_name_map(&self ) -> HashMap<String, String> {
+        let contents = fs::read_to_string(self.fs_path.clone()).unwrap();
+        let stylesheet = StyleSheet::parse(
+            &contents,
+            ParserOptions {
+                filename: self.full_path.clone().into_os_string().into_string().unwrap(),
+                css_modules: Some(Config {
+                    // not using lightning css hashing in favour of hashing via generic names
+                    // lightning suggests that we do hashing ourselves https://github.com/parcel-bundler/lightningcss/issues/156#issuecomment-1131828962
+                    pattern: Pattern::parse("[local]").unwrap(),
+                    dashed_idents: false,
+                }),
+                ..ParserOptions::default()
+            },
+        )
+        .unwrap();
+    
+        let css_result = stylesheet.to_css(PrinterOptions {
+            minify: false,
+            analyze_dependencies: None,
+            pseudo_classes: None,
+            source_map: None,
+            targets: Targets::default(),
+            project_root: Some(&self.context.clone().into_os_string().into_string().unwrap()),
+        });
+        if let Ok(ToCssResult { exports, .. }) = css_result {
+            if let Some(exports) = exports {
+                let generator = Generator::new_with_options(
+                    &self.pattern,
+                    Options {
+                        context: self.context.clone(),
+                        hash_prefix: self.hash_prefix.clone(),
+                    },
+                );
+                return exports
+                    .iter()
+                    .map(|(k, v)| (k.clone(), self.css_module_exports_to_str(&v, &generator)))
+                    .collect();
             }
         }
-
-        Ok(())
+        HANDLER.with(|handler| handler.struct_err(&format!("Failed to parse {}", self.full_path.to_str().unwrap())).emit());
+        HashMap::new()
+    }
+    
+    fn css_module_exports_to_str(&self, export: &CssModuleExport, generator: &Generator) -> String {
+        format!(
+            "{} {}",
+            generator.generate(&export.name, self.full_path.clone()),
+            export
+                .composes
+                .iter()
+                .map(|reference| match reference {
+                    CssModuleReference::Local { name } => generator.generate(name, self.full_path.clone()),
+                    // global compose need not be transformed
+                    CssModuleReference::Global { name } => name.clone(),
+                    CssModuleReference::Dependency { name, specifier } => {
+                        let path = self.full_path.clone().parent().unwrap().join(specifier);
+                        generator.generate(name, path.absolutize().unwrap().to_path_buf())
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join(" ")
+        )
+        .trim()
+        .to_string()
     }
 }

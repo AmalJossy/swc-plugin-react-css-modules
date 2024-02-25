@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf, rc::Rc};
+use std::{collections::HashMap, path::PathBuf};
 
 use path_absolutize::*;
 use swc_core::{
@@ -17,8 +17,7 @@ use swc_core::{
     plugin::errors::HANDLER,
 };
 
-use crate::generic_names::{Generator, Options};
-use crate::{process_stylesheet::generate_style_name_map, Config};
+use crate::{process_stylesheet::CssModuleParser, Config};
 
 pub struct AutoMapCssModules {
     /// holds the directory of the file being processed
@@ -27,8 +26,8 @@ pub struct AutoMapCssModules {
     /// holds the virtual directory of the file being processed
     virtual_dir: PathBuf,
 
-    /// reference to the generator
-    generator: Rc<Generator>,
+    /// project root
+    context: PathBuf,
 
     /// holds the configuration for the plugin
     config: Config,
@@ -81,14 +80,8 @@ impl AutoMapCssModules {
         Self {
             dir,
             virtual_dir,
+            context,
             config: config.clone(),
-            generator: Rc::new(Generator::new_with_options(
-                config.generate_scoped_name.as_str(),
-                Options {
-                    context,
-                    hash_prefix: config.hash_prefix,
-                },
-            )),
             style_maps_for_file: HashMap::new(),
             is_runtime_helper_req: false,
         }
@@ -115,10 +108,16 @@ impl AutoMapCssModules {
             .unwrap()
             .to_path_buf();
 
-        self.style_maps_for_file.insert(
-            name.clone(),
-            generate_style_name_map(Rc::clone(&self.generator), &virtual_path, &file_path),
+        let css_parser = CssModuleParser::new(
+            self.config.generate_scoped_name.clone(),
+            self.context.clone(),
+            self.config.hash_prefix.clone(),
+            virtual_path,
+            file_path,
         );
+
+        self.style_maps_for_file
+            .insert(name.clone(), css_parser.generate_style_name_map());
     }
 
     fn get_generated_name(&self, style_name: &str, span: &Span) -> String {
@@ -412,7 +411,6 @@ impl VisitMut for AutoMapCssModules {
     // https://rustdoc.swc.rs/swc_ecma_visit/trait.VisitMut.html
 
     fn visit_mut_jsx_opening_element(&mut self, n: &mut JSXOpeningElement) {
-        n.visit_mut_children_with(self);
         let mut class_names: Option<JSXAttr> = None;
         let mut style_names: Option<JSXAttr> = None;
 
@@ -471,6 +469,8 @@ impl VisitMut for AutoMapCssModules {
                 _ => (),
             }
         }
+
+        n.visit_mut_children_with(self);
     }
 
     fn visit_mut_import_decl(&mut self, n: &mut ImportDecl) {
