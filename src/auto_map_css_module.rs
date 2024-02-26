@@ -124,10 +124,19 @@ impl AutoMapCssModules {
         let mut style_name_parts: Vec<&str> = style_name.splitn(2, ".").collect();
 
         let generated_name_opt = match style_name_parts.len() {
-            1 => match self.style_maps_for_file.get(&JsWord::from("")) {
-                Some(style_map) => style_map.get(&style_name.to_string()),
-                None => None,
-            },
+            // without prefix, ie styleName="foo-bar"
+            1 => {
+                let no_prefix_name = match self.style_maps_for_file.get(&JsWord::from("")) {
+                    Some(style_map) => style_map.get(&style_name.to_string()),
+                    None => None,
+                };
+                if no_prefix_name.is_none() {
+                    self.style_maps_for_file.iter().find_map(|(_, v)| v.get(&style_name.to_string()))
+                } else {
+                    no_prefix_name
+                }
+            }
+            // with prefix,ie styleName="styles.foo-bar"
             2 => {
                 let module = style_name_parts.remove(0);
                 let name = style_name_parts.remove(0);
@@ -137,6 +146,7 @@ impl AutoMapCssModules {
                     None => None,
                 }
             }
+            // more than 1 dot in name
             _ => None,
         };
 
