@@ -31,7 +31,7 @@ pub struct Options<'a> {
 ///
 /// ```
 /// use std::path::PathBuf;
-/// use swc_plugin_css_modules::loader_utils::interpolate::{interpolate_name, LoaderContext, Options};
+/// use swc_plugin_react_css_modules::loader_utils::interpolate::{interpolate_name, LoaderContext, Options};
 ///
 /// let loader_context = LoaderContext {
 ///     resource_path: Some("/absolute/path/to/app/js/javascript.js".into()),

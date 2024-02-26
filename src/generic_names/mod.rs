@@ -47,7 +47,7 @@ impl Generator {
     /// # Examples
     ///
     /// ```
-    /// use swc_plugin_css_modules::generic_names::Generator;
+    /// use swc_plugin_react_css_modules::generic_names::Generator;
     ///
     /// let generator = Generator::new("[name]__[local]___[hash:base64:5]");
     ///
