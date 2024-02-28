@@ -161,14 +161,12 @@ impl AutoMapCssModules {
         match generated_name_opt {
             Some(generated_name) => generated_name.to_string(),
             None => {
-                // enable warning in build
+                // TODO: replace with warning in build
                 HANDLER.with(|handler| {
-                    handler
-                        .struct_span_warn(
+                    handler.struct_span_err(
                             *span,
                             &format!("Could not resolve styleName {}", style_name),
-                        )
-                        .emit();
+                        ).emit();
                 });
                 String::default()
             }
