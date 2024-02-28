@@ -7,7 +7,6 @@ use lightningcss::{
     targets::Targets,
 };
 use path_absolutize::Absolutize;
-use swc_core::plugin::errors::HANDLER;
 
 use crate::generic_names::{Generator, Options};
 
@@ -40,14 +39,23 @@ impl CssModuleParser {
             fs_path,
             full_path,
         }
-    } 
+    }
 
-    pub fn generate_style_name_map(&self ) -> HashMap<String, String> {
-        let contents = fs::read_to_string(self.fs_path.clone()).unwrap();
+    pub fn generate_style_name_map(&self) -> Result<HashMap<String, String>, String> {
+        let file = fs::read_to_string(self.fs_path.clone());
+        let contents = match file {
+            Ok(data) => data,
+            Err(_) => return Err(format!("Could not read {:?}", self.full_path)),
+        };
         let stylesheet = StyleSheet::parse(
             &contents,
             ParserOptions {
-                filename: self.full_path.clone().into_os_string().into_string().unwrap(),
+                filename: self
+                    .full_path
+                    .clone()
+                    .into_os_string()
+                    .into_string()
+                    .unwrap(),
                 css_modules: Some(Config {
                     // not using lightning css hashing in favour of hashing via generic names
                     // lightning suggests that we do hashing ourselves https://github.com/parcel-bundler/lightningcss/issues/156#issuecomment-1131828962
@@ -58,7 +66,7 @@ impl CssModuleParser {
             },
         )
         .unwrap();
-    
+
         let css_result = stylesheet.to_css(PrinterOptions {
             minify: false,
             analyze_dependencies: None,
@@ -67,25 +75,31 @@ impl CssModuleParser {
             targets: Targets::default(),
             project_root: Some(&self.context.clone().into_os_string().into_string().unwrap()),
         });
-        if let Ok(ToCssResult { exports, .. }) = css_result {
-            if let Some(exports) = exports {
-                let generator = Generator::new_with_options(
-                    &self.pattern,
-                    Options {
-                        context: self.context.clone(),
-                        hash_prefix: self.hash_prefix.clone(),
+        match css_result {
+            Ok(ToCssResult { exports, .. }) => {
+                 match exports {
+                    Some(exports) =>  {
+                        let generator = Generator::new_with_options(
+                            &self.pattern,
+                            Options {
+                                context: self.context.clone(),
+                                hash_prefix: self.hash_prefix.clone(),
+                            },
+                        );
+                        Ok(exports
+                            .iter()
+                            .map(|(k, v)| (k.clone(), self.css_module_exports_to_str(&v, &generator)))
+                            .collect())
                     },
-                );
-                return exports
-                    .iter()
-                    .map(|(k, v)| (k.clone(), self.css_module_exports_to_str(&v, &generator)))
-                    .collect();
+                    _ => Ok(HashMap::new())
+                 }
+            }
+            Err(printer_err) => {
+                Err(printer_err.to_string())
             }
         }
-        HANDLER.with(|handler| handler.struct_err(&format!("Failed to parse {}", self.full_path.to_str().unwrap())).emit());
-        HashMap::new()
     }
-    
+
     fn css_module_exports_to_str(&self, export: &CssModuleExport, generator: &Generator) -> String {
         format!(
             "{} {}",
@@ -94,7 +108,8 @@ impl CssModuleParser {
                 .composes
                 .iter()
                 .map(|reference| match reference {
-                    CssModuleReference::Local { name } => generator.generate(name, self.full_path.clone()),
+                    CssModuleReference::Local { name } =>
+                        generator.generate(name, self.full_path.clone()),
                     // global compose need not be transformed
                     CssModuleReference::Global { name } => name.clone(),
                     CssModuleReference::Dependency { name, specifier } => {

@@ -116,8 +116,14 @@ impl AutoMapCssModules {
             file_path,
         );
 
-        self.style_maps_for_file
-            .insert(name.clone(), css_parser.generate_style_name_map());
+        let style_name_map = css_parser.generate_style_name_map();
+        match style_name_map {
+            Ok(style_name_map) => {
+                self.style_maps_for_file
+                    .insert(name.clone(), style_name_map);
+            }
+            Err(err_str) => HANDLER.with(|handler| handler.struct_err(&err_str).emit()),
+        }
     }
 
     fn get_generated_name(&self, style_name: &str, span: &Span) -> String {
@@ -131,7 +137,9 @@ impl AutoMapCssModules {
                     None => None,
                 };
                 if no_prefix_name.is_none() {
-                    self.style_maps_for_file.iter().find_map(|(_, v)| v.get(&style_name.to_string()))
+                    self.style_maps_for_file
+                        .iter()
+                        .find_map(|(_, v)| v.get(&style_name.to_string()))
                 } else {
                     no_prefix_name
                 }
@@ -153,6 +161,7 @@ impl AutoMapCssModules {
         match generated_name_opt {
             Some(generated_name) => generated_name.to_string(),
             None => {
+                // enable warning in build
                 HANDLER.with(|handler| {
                     handler
                         .struct_span_warn(

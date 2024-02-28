@@ -12,7 +12,6 @@ use swc_core::{ecma::{
 }, plugin::metadata::TransformPluginMetadataContextKind};
 use swc_core::plugin::{plugin_transform, proxies::TransformPluginProgramMetadata};
 
-
 /// An example plugin function with macro support.
 /// `plugin_transform` macro interop pointers into deserialized structs, as well
 /// as returning ptr back to host.
