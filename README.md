@@ -1,7 +1,7 @@
 # swc-plugin-react-css-modules
 
 > [!WARNING]  
-> Plugin is work in progress
+> Plugin is a work in progress with no guarantee of release
 
 SWC plugin for advanced CSS modules support in React:
 
